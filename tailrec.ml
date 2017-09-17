@@ -97,11 +97,12 @@ let rec dump_annot_list = function
 (*---------------------------------------------------------------------------*)
 (*                           Actual checking code                            *)
 (*---------------------------------------------------------------------------*)
-let assert_tail_calls_for (f_ident : Ident.t) body : unit =
+let assert_tail_calls_for (f_ident : Ident.t) body : bool =
   Printf.printf "    Generating annotations for lambda term...\n%!";
   annots := [];
   emit_tail_infos true body;
   let rec iterlam f =  Lambda.iter (fun l -> f l; iterlam f l) in
+  let retval = ref true in
   let assert_apply lam = match lam with
     | Lapply {ap_func=Lvar i; ap_args=args; ap_loc=loc} when i = f_ident ->
       Printf.printf "    Checking if the lambda term Lapply(%s, _, _) is a tail call...%!" (Ident.unique_name i);
@@ -113,10 +114,12 @@ let assert_tail_calls_for (f_ident : Ident.t) body : unit =
         Printf.printf "ERROR!\n%!";
         Location.print_error Format.err_formatter loc;
         Format.eprintf "this call to %s is not a tail-call!\n%!" f_ident.Ident.name;
+	retval := false
       end
     | _ -> ()
   in
-  iterlam assert_apply body
+  iterlam assert_apply body;
+  !retval
 
 module ExpressionIteratorArg = struct
   include TypedtreeIter.DefaultIteratorArgument
@@ -137,15 +140,14 @@ module ExpressionIteratorArg = struct
   let enter_structure_item st =
     match st.str_desc with
     | Tstr_value(Recursive, ([{vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}] as vbs)) ->
-        if List.exists (fun (l, _) -> l.txt = "tailrec") vb_attributes then begin
+        if true || List.exists (fun (l, _) -> l.txt = "tailrec") vb_attributes then begin
           Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
           let fname = Ident.unique_name f in
           Printf.printf "  Compiling %s into Lletrec lambda term...\n%!" fname;
           let lam = Translcore.(transl_let Recursive vbs (transl_exp vb_expr)) in
           begin match lam with
           | Lletrec (bindings, body) ->
-              Printf.printf "  Checking all calls to %s in lambda body are tail calls...\n%!" fname;
-              assert_tail_calls_for f body
+              Printf.printf "  Checking all calls to %s in lambda body are tail calls...%! %b\n" fname (assert_tail_calls_for f body)
           | _ -> failwith "Compiled value into something other than a Lletrec"
           end
         end
