@@ -1,6 +1,8 @@
 open Asttypes
 open Typedtree
 open Lambda
+open Path
+open Ident
 
 (*---------------------------------------------------------------------------*)
 (*         Hacked version of Simplif.emit_tail_infos from the compiler       *)
@@ -41,12 +43,6 @@ let rec emit_tail_infos is_tail lambda =
       list_emit_tail_infos_fun snd is_tail sw.sw_consts;
       list_emit_tail_infos_fun snd is_tail sw.sw_blocks;
       Misc.may  (emit_tail_infos is_tail) sw.sw_failaction
-  | Lstringswitch (lam, sw, d) ->
-      emit_tail_infos false lam;
-      List.iter
-        (fun (_,lam) ->  emit_tail_infos is_tail lam)
-        sw ;
-      Misc.may (emit_tail_infos is_tail) d
   | Lstaticraise (_, l) ->
       list_emit_tail_infos false l
   | Lstaticcatch (body, _, handler) ->
@@ -125,9 +121,22 @@ let assert_tail_calls_for (f_ident : Ident.t) body : unit =
 module ExpressionIteratorArg = struct
   include TypedtreeIter.DefaultIteratorArgument
 
+  let enter_expression = function
+    | {exp_desc=(Texp_while _|Texp_for _); exp_loc=l} ->
+      Printf.printf "You used a loop: ";
+      Location.print Format.std_formatter l
+    (* | {exp_desc=(Texp_instvar _|Texp_setinstvar _); exp_loc=l} -> *)
+    | {exp_desc=Texp_apply ({exp_desc=Texp_ident (id, _, _); exp_loc=l}, _)} when List.mem (Path.name id) ["Pervasives.ref"; "Pervasives.:="; "Pervasives.!"] ->
+      Printf.printf "You used a reference: ";
+      Location.print Format.std_formatter l
+    | {exp_desc=(Texp_array _); exp_loc=l} ->
+      Printf.printf "You used an array: ";
+      Location.print Format.std_formatter l
+    | _ -> ()
+
   let enter_structure_item st =
     match st.str_desc with
-    | Tstr_value(Recursive, ({vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}::_ as vbs)) ->
+    | Tstr_value(Recursive, ([{Typedtree.vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}] as vbs)) ->
         if List.exists (fun (l, _) -> l.txt = "tailrec") vb_attributes then begin
           Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
           let fname = Ident.unique_name f in
@@ -139,8 +148,8 @@ module ExpressionIteratorArg = struct
               assert_tail_calls_for f body
           | _ -> failwith "Compiled value into something other than a Lletrec"
           end
-        end
-    | _ -> ()
+        end      
+   
 end
 
 (*---------------------------------------------------------------------------*)
