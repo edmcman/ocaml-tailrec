@@ -18,25 +18,25 @@ let rec emit_tail_infos is_tail lambda =
   match lambda with
   | Lvar _ -> ()
   | Lconst _ -> ()
-  | Lapply (func, l, loc) ->
+  | Lapply {ap_func=func; ap_args=l; ap_loc=loc} ->
       list_emit_tail_infos false l;
       (* Stypes.record (Stypes.An_call (loc, call_kind l)) *)
       annots := (loc, call_kind l) :: !annots
-  | Lfunction (_, _, lam) ->
+  | Lfunction {body=lam} ->
       emit_tail_infos true lam
-  | Llet (_, _, lam, body) ->
+  | Llet (_, _, _, lam, body) ->
       emit_tail_infos false lam;
       emit_tail_infos is_tail body
   | Lletrec (bindings, body) ->
       List.iter (fun (_, lam) -> emit_tail_infos false lam) bindings;
       emit_tail_infos is_tail body
-  | Lprim (Pidentity, [arg]) ->
+  | Lprim (Pidentity, [arg], _loc) ->
       emit_tail_infos is_tail arg
-  | Lprim (Psequand, [arg1; arg2])
-  | Lprim (Psequor, [arg1; arg2]) ->
+  | Lprim (Psequand, [arg1; arg2], _loc)
+  | Lprim (Psequor, [arg1; arg2], _loc) ->
       emit_tail_infos false arg1;
       emit_tail_infos is_tail arg2
-  | Lprim (_, l) ->
+  | Lprim (_, l, _loc) ->
       list_emit_tail_infos false l
   | Lswitch (lam, sw) ->
       emit_tail_infos false lam;
@@ -103,7 +103,7 @@ let assert_tail_calls_for (f_ident : Ident.t) body : unit =
   emit_tail_infos true body;
   let rec iterlam f =  Lambda.iter (fun l -> f l; iterlam f l) in
   let assert_apply lam = match lam with
-    | Lapply (Lvar i, args, loc) when i = f_ident ->
+    | Lapply {ap_func=Lvar i; ap_args=args; ap_loc=loc} when i = f_ident ->
       Printf.printf "    Checking if the lambda term Lapply(%s, _, _) is a tail call...%!" (Ident.unique_name i);
       let (_, a) = List.find (fun (l, _) -> l = loc) !annots in
       begin match a with
@@ -136,8 +136,7 @@ module ExpressionIteratorArg = struct
 
   let enter_structure_item st =
     match st.str_desc with
-    (* | Tstr_value(Recursive, ([{vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}] as vbs)) -> *)
-    | Tstr_value(Recursive, ({vb_pat = _}::_)) ->
+    | Tstr_value(Recursive, ([{vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}] as vbs)) ->
         if List.exists (fun (l, _) -> l.txt = "tailrec") vb_attributes then begin
           Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
           let fname = Ident.unique_name f in
@@ -149,7 +148,8 @@ module ExpressionIteratorArg = struct
               assert_tail_calls_for f body
           | _ -> failwith "Compiled value into something other than a Lletrec"
           end
-        end      
+        end
+    | _ -> ()
    
 end
 
