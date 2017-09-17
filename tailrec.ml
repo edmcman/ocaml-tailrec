@@ -125,6 +125,17 @@ module ExpressionIteratorArg = struct
   include TypedtreeIter.DefaultIteratorArgument
 
   let enter_expression = function
+    | {exp_desc=Texp_let(Recursive, (({vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes})::_ as vbs), _)} ->
+      Printf.printf "a recursive let %s\n" (Ident.unique_name f);
+      Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
+      let fname = Ident.unique_name f in
+      Printf.printf "  Compiling %s into Lletrec lambda term...\n%!" fname;
+      let lam = Translcore.(transl_let Recursive vbs (transl_exp vb_expr)) in
+      begin match lam with
+        | Lletrec (bindings, body) ->
+          Printf.printf "  Checking all calls to %s in lambda body are tail calls...%! %b\n" fname (assert_tail_calls_for f body)
+        | _ -> failwith "Compiled value into something other than a Lletrec"
+      end
     | {exp_desc=(Texp_while _|Texp_for _); exp_loc=l} ->
       Printf.printf "You used a loop: ";
       Location.print Format.std_formatter l
@@ -138,8 +149,8 @@ module ExpressionIteratorArg = struct
     | _ -> ()
 
   let enter_structure_item st =
-    match st.str_desc with
-    | Tstr_value(Recursive, ([{vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}] as vbs)) ->
+    (match st.str_desc with
+    | Tstr_value(Recursive, (({vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes})::_ as vbs)) ->
         if true || List.exists (fun (l, _) -> l.txt = "tailrec") vb_attributes then begin
           Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
           let fname = Ident.unique_name f in
@@ -151,7 +162,10 @@ module ExpressionIteratorArg = struct
           | _ -> failwith "Compiled value into something other than a Lletrec"
           end
         end
-    | _ -> ()
+    | _ -> ());
+
+    TypedtreeIter.DefaultIteratorArgument.enter_structure_item st
+      
    
 end
 
