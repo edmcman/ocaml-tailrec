@@ -98,22 +98,23 @@ let rec dump_annot_list = function
 (*                           Actual checking code                            *)
 (*---------------------------------------------------------------------------*)
 let assert_tail_calls_for (f_ident : Ident.t) body : bool =
-  Printf.printf "    Generating annotations for lambda term...\n%!";
+  (* Printf.printf "    Generating annotations for lambda term...\n%!"; *)
   annots := [];
   emit_tail_infos true body;
   let rec iterlam f =  Lambda.iter (fun l -> f l; iterlam f l) in
   let retval = ref true in
   let assert_apply lam = match lam with
     | Lapply {ap_func=Lvar i; ap_args=args; ap_loc=loc} when i = f_ident ->
-      Printf.printf "    Checking if the lambda term Lapply(%s, _, _) is a tail call...%!" (Ident.unique_name i);
+      (* Printf.printf "    Checking if the lambda term Lapply(%s, _, _) is a tail call...%!" (Ident.unique_name i); *)
       let (_, a) = List.find (fun (l, _) -> l = loc) !annots in
       begin match a with
       | `Tail -> 
-        Printf.printf "OK!\n%!";
+	(* Printf.printf "OK!\n%!"; *)
+	()
       | `Stack -> 
-        Printf.printf "ERROR!\n%!";
-        Location.print_error Format.err_formatter loc;
-        Format.eprintf "this call to %s is not a tail-call!\n%!" f_ident.Ident.name;
+        (* Printf.printf "ERROR!\n%!"; *)
+        (* Location.print_error Format.err_formatter loc; *)
+        (* Format.eprintf "this call to %s is not a tail-call!\n%!" f_ident.Ident.name; *)
 	retval := false
       end
     | _ -> ()
@@ -121,47 +122,47 @@ let assert_tail_calls_for (f_ident : Ident.t) body : bool =
   iterlam assert_apply body;
   !retval
 
+let ident = ref ""
+
+let check f vb_expr vbs =
+  let fname = Ident.unique_name f in
+  (* Printf.printf "  Compiling %s into Lletrec lambda term...\n%!" fname; *)
+  let lam = Translcore.(transl_let Recursive vbs (transl_exp vb_expr)) in
+  begin match lam with
+    | Lletrec (bindings, body) ->
+      if (assert_tail_calls_for f body) = false then
+	Printf.printf "Non-tail-recursion function used: %s\n" !ident
+    | _ -> failwith "Compiled value into something other than a Lletrec"
+  end
+  
+  
 module ExpressionIteratorArg = struct
   include TypedtreeIter.DefaultIteratorArgument
 
   let enter_expression = function
     | {exp_desc=Texp_let(Recursive, (({vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes})::_ as vbs), _)} ->
-      Printf.printf "a recursive let %s\n" (Ident.unique_name f);
-      Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
-      let fname = Ident.unique_name f in
-      Printf.printf "  Compiling %s into Lletrec lambda term...\n%!" fname;
-      let lam = Translcore.(transl_let Recursive vbs (transl_exp vb_expr)) in
-      begin match lam with
-        | Lletrec (bindings, body) ->
-          Printf.printf "  Checking all calls to %s in lambda body are tail calls...%! %b\n" fname (assert_tail_calls_for f body)
-        | _ -> failwith "Compiled value into something other than a Lletrec"
-      end
+      check f vb_expr vbs
     | {exp_desc=(Texp_while _|Texp_for _); exp_loc=l} ->
-      Printf.printf "You used a loop: ";
-      Location.print Format.std_formatter l
+      Location.print Format.std_formatter l;
+      Printf.printf "Loop used in: %s\n" !ident
     (* | {exp_desc=(Texp_instvar _|Texp_setinstvar _); exp_loc=l} -> *)
     | {exp_desc=Texp_apply ({exp_desc=Texp_ident (id, _, _); exp_loc=l}, _)} when List.mem (Path.name id) ["Pervasives.ref"; "Pervasives.:="; "Pervasives.!"] ->
-      Printf.printf "You used a reference: ";
-      Location.print Format.std_formatter l
+      Location.print Format.std_formatter l;
+      Printf.printf "Reference used in: %s\n" !ident
     | {exp_desc=(Texp_array _); exp_loc=l} ->
-      Printf.printf "You used an array: ";
-      Location.print Format.std_formatter l
+      Location.print Format.std_formatter l;
+      Printf.printf "Array used in: %s\n" !ident
     | _ -> ()
 
   let enter_structure_item st =
     (match st.str_desc with
+    | Tstr_value(_, (({vb_pat = {pat_desc = Tpat_var(f,_)}}::_))) ->
+      ident := f.Ident.name;
+    | _ -> ());
+
+    (match st.str_desc with
     | Tstr_value(Recursive, (({vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes})::_ as vbs)) ->
-        if true || List.exists (fun (l, _) -> l.txt = "tailrec") vb_attributes then begin
-          Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
-          let fname = Ident.unique_name f in
-          Printf.printf "  Compiling %s into Lletrec lambda term...\n%!" fname;
-          let lam = Translcore.(transl_let Recursive vbs (transl_exp vb_expr)) in
-          begin match lam with
-          | Lletrec (bindings, body) ->
-              Printf.printf "  Checking all calls to %s in lambda body are tail calls...%! %b\n" fname (assert_tail_calls_for f body)
-          | _ -> failwith "Compiled value into something other than a Lletrec"
-          end
-        end
+      check f vb_expr vbs
     | _ -> ());
 
     TypedtreeIter.DefaultIteratorArgument.enter_structure_item st
