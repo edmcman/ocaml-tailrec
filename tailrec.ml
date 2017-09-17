@@ -136,7 +136,8 @@ module ExpressionIteratorArg = struct
 
   let enter_structure_item st =
     match st.str_desc with
-    | Tstr_value(Recursive, ([{Typedtree.vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}] as vbs)) ->
+    (* | Tstr_value(Recursive, ([{vb_pat = {pat_desc = Tpat_var(f,_)}; vb_expr; vb_attributes}] as vbs)) -> *)
+    | Tstr_value(Recursive, ({vb_pat = _}::_)) ->
         if List.exists (fun (l, _) -> l.txt = "tailrec") vb_attributes then begin
           Printf.printf "  Found value %s at %s marked as tail-recursive...\n%!" (f.Ident.name) "[location]";
           let fname = Ident.unique_name f in
