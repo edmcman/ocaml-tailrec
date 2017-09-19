@@ -152,6 +152,12 @@ module ExpressionIteratorArg = struct
     | {exp_desc=(Texp_array _); exp_loc=l} ->
       Location.print Format.std_formatter l;
       Printf.printf "Array used in: %s\n" !ident
+    | {exp_desc=(Texp_ifthenelse _); exp_loc=l} ->
+      Location.print Format.std_formatter l;
+      Printf.printf "If-then-else used in: %s\n" !ident
+    | {exp_desc=(Texp_match _); exp_loc=l} ->
+      Location.print Format.std_formatter l;
+      Printf.printf "Pattern matching used in: %s\n" !ident
     | _ -> ()
 
   let enter_structure_item st =
