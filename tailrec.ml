@@ -125,17 +125,19 @@ let assert_tail_calls_for (f_ident : Ident.t) body : bool =
 let ident = ref ""
 
 let check f vb_expr vbs =
-  let fname = Ident.unique_name f in
-  (* Printf.printf "  Compiling %s into Lletrec lambda term...\n%!" fname; *)
-  let lam = Translcore.(transl_let Recursive vbs (transl_exp vb_expr)) in
-  begin match lam with
+  try
+    let fname = Ident.unique_name f in
+    (* Printf.printf "  Compiling %s into Lletrec lambda term...\n%!" fname; *)
+    let lam = Translcore.(transl_let Recursive vbs (transl_exp vb_expr)) in
+    begin match lam with
     | Lletrec (bindings, body) ->
       if (assert_tail_calls_for f body) = false then
 	Printf.printf "Non-tail-recursion function used: %s\n" !ident
     | _ -> failwith "Compiled value into something other than a Lletrec"
-  end
-  
-  
+    end
+  with _ ->
+    Printf.printf "Unable to test for tail-recursion: %s\n" !ident
+
 module ExpressionIteratorArg = struct
   include TypedtreeIter.DefaultIteratorArgument
 
@@ -172,8 +174,7 @@ module ExpressionIteratorArg = struct
     | _ -> ());
 
     TypedtreeIter.DefaultIteratorArgument.enter_structure_item st
-      
-   
+
 end
 
 (*---------------------------------------------------------------------------*)
